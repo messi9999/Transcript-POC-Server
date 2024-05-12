@@ -83,7 +83,7 @@ class TranscribeAudioView(views.APIView):
         except transcribe_client.exceptions.BadRequestException:
             existing_job = None
             job_status = None
-
+        
         if job_status == 'COMPLETED':
             return self.handle_existing_job(existing_job)
         elif job_status in ['IN_PROGRESS', 'QUEUED']:
@@ -99,8 +99,8 @@ class TranscribeAudioView(views.APIView):
 
     def handle_existing_job(self, job):
         transcript_file_uri = job['TranscriptionJob']['Transcript']['TranscriptFileUri']
-        transcript_response = requests.get(transcript_file_uri)
-        transcript = transcript_response.json()
+        sarr = transcript_file_uri.split('/')
+        transcript = self.read_s3_json(settings.AWS_STORAGE_BUCKET_NAME_TRANSCRIPTS, sarr[4])
         return Response(transcript, status=status.HTTP_200_OK)
 
     def wait_for_transcription(self, transcribe_client, job_name):
@@ -124,12 +124,24 @@ class TranscribeAudioView(views.APIView):
                 Media={'MediaFileUri': s3_url},
                 MediaFormat='mp4',
                 LanguageCode='en-US',
-                OutputBucketName=settings.AWS_STORAGE_BUCKET_NAME_TRANSCRIPTS
+                OutputBucketName=settings.AWS_STORAGE_BUCKET_NAME_TRANSCRIPTS,
             )
             # Wait for the job to complete
             return self.wait_for_transcription(transcribe_client, job_name)
         except (BotoCoreError, ClientError) as error:
             return Response({'error': str(error)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    def read_s3_json(self, bucket_name, file_key):
+        # Create a client
+        s3 = boto3.client('s3')
+        # Get the object from the bucket
+        obj = s3.get_object(Bucket=bucket_name, Key=file_key)
+        # Read the contents of the file
+        data = obj['Body'].read().decode('utf-8')
+        # Convert string to JSON
+        json_data = json.loads(data)
+        return json_data
+
 
 class TranscribeAudioViewMedical(views.APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -202,16 +214,12 @@ class TranscribeAudioViewMedical(views.APIView):
     def read_s3_json(self, bucket_name, file_key):
         # Create a client
         s3 = boto3.client('s3')
-
         # Get the object from the bucket
         obj = s3.get_object(Bucket=bucket_name, Key=file_key)
-        
         # Read the contents of the file
         data = obj['Body'].read().decode('utf-8')
-        
         # Convert string to JSON
         json_data = json.loads(data)
-        
         return json_data
 
 class S3FileListView(views.APIView):
