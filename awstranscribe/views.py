@@ -1,3 +1,4 @@
+from typing import Any
 from django.contrib.auth import authenticate
 from rest_framework import views, status, response, permissions, authtoken
 from rest_framework.response import Response
@@ -5,14 +6,34 @@ from .serializers import UserSerializer
 
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
-import requests
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.conf import settings
-from django.http import StreamingHttpResponse
 import hashlib
 import time
 import json
+
+from .utils import (
+        calculate_tokens, 
+        check_token_limit_status, 
+        chat_complete, 
+        store_txt_file, 
+        upload_txt_file_to_openai,
+        create_assistant,
+        create_thread,
+        create_message,
+        run_thread,
+        retrieve_run,
+        delete_assistant,
+        delete_txt_file_from_openai,
+        delete_thread,
+        remove_file,
+        get_list_messages,
+    )
+
+from django.core.files.storage import default_storage
+from django.core.files.base import ContentFile
+
 
 class CreateUserView(views.APIView):
     permission_classes = [permissions.AllowAny]
@@ -35,7 +56,6 @@ class LoginView(views.APIView):
             token, created = authtoken.models.Token.objects.get_or_create(user=user)
             return response.Response({'token': token.key}, status=status.HTTP_200_OK)
         return response.Response({'error': 'Invalid Credentials'}, status=status.HTTP_400_BAD_REQUEST)
-
 
 class UploadToS3(views.APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -64,7 +84,6 @@ class UploadToS3(views.APIView):
         else:
             return JsonResponse({'error': 'Invalid HTTP method'}, status=400)
         
-
 class TranscribeAudioView(views.APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -141,7 +160,6 @@ class TranscribeAudioView(views.APIView):
         # Convert string to JSON
         json_data = json.loads(data)
         return json_data
-
 
 class TranscribeAudioViewMedical(views.APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -251,3 +269,97 @@ class S3FileListView(views.APIView):
             return Response({'error': 'Bucket does not exist'}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+class SummarizeTxt(views.APIView):
+    permission_classes = [permissions.IsAuthenticated]  # Or update as per your permission policy
+
+    def __init__(self, **kwargs: Any) -> None:
+        self.text = ""
+        self.max_token = 10000
+
+    def post(self, request):
+        self.text = request.data.get('text')
+        num_token = calculate_tokens(self.text)
+        isTokenLimit = check_token_limit_status(num_token=num_token, max_token=self.max_token)
+
+
+        if isTokenLimit:
+            summary = self.use_chatComplete()    
+            print(summary)
+        else:
+            summary = self.use_assistant()    
+
+        return response.Response({'summary': summary}, status=status.HTTP_200_OK)
+    
+    def use_assistant(self):
+        file_path = store_txt_file(self.text)
+        file = upload_txt_file_to_openai(file_path)
+
+        assistant = create_assistant(file_id=file.id)
+        thread = create_thread()
+        message = create_message(thread_id=thread.id, message="Summarize the lecture content inside the file.")
+        run = run_thread(thread_id=thread.id, assistant_id=assistant.id)
+        retrieved_run_status = "in_progress"
+
+        while(retrieved_run_status != "completed"):
+            retrieved_run = retrieve_run(thread_id=thread.id, run_id=run.id)
+            retrieved_run_status = retrieved_run.status
+            time.sleep(2)
+        
+        list_messages = get_list_messages(thread_id=thread.id)
+
+        delete_assistant(assistant_id=assistant.id)
+        delete_txt_file_from_openai(file_id=file.id)
+        delete_thread(thread_id=thread.id)
+        remove_file(file_path=file_path)
+
+        return list_messages.data[0].content[0].text.value
+
+        
+
+    def use_chatComplete(self):
+        message = chat_complete(self.text)
+        return message.choices[0].message.content
+
+class SummarizeTxtFileUpload(views.APIView):
+    permission_classes = [permissions.IsAuthenticated]  # Or update as per your permission policy
+
+    def __init__(self, **kwargs: Any) -> None:
+        self.file_path = ""
+
+    def post(self, request):
+        file = request.FILES['file']
+        # uploaded = store_uploaded_file(file=file)
+        if not file:
+            return JsonResponse({'error': 'No file provided'}, status=400)
+
+        # Save file to the media directory
+        file_name = default_storage.save(f'documents/{file.name}', ContentFile(file.read()))
+        self.file_path = default_storage.url(file_name)
+
+        summary = self.use_assistant()
+
+        return response.Response({'summary': summary}, status=status.HTTP_200_OK)
+
+    def use_assistant(self):
+        file = upload_txt_file_to_openai(self.file_path)
+
+        assistant = create_assistant(file_id=file.id)
+        thread = create_thread()
+        message = create_message(thread_id=thread.id, message="Summarize the lecture content inside the file.")
+        run = run_thread(thread_id=thread.id, assistant_id=assistant.id)
+        retrieved_run_status = "in_progress"
+
+        while(retrieved_run_status != "completed"):
+            retrieved_run = retrieve_run(thread_id=thread.id, run_id=run.id)
+            retrieved_run_status = retrieved_run.status
+            time.sleep(2)
+        
+        list_messages = get_list_messages(thread_id=thread.id)
+
+        delete_assistant(assistant_id=assistant.id)
+        delete_txt_file_from_openai(file_id=file.id)
+        delete_thread(thread_id=thread.id)
+        remove_file(file_path="." + self.file_path)
+
+        return list_messages.data[0].content[0].text.value
