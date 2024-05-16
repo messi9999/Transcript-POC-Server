@@ -12,9 +12,6 @@ def calculate_tokens(text) -> int:
     # For example, 'cl100k_base' is the encoding for GPT-4
     encoding = tiktoken.get_encoding('cl100k_base')
 
-    # The text for which you want to count tokens
-    text = "This is an example sentence to count tokens."
-
     # Encode the text to get tokens
     tokens = encoding.encode(text)
 

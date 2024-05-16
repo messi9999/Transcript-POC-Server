@@ -285,7 +285,6 @@ class SummarizeTxt(views.APIView):
 
         if isTokenLimit:
             summary = self.use_chatComplete()    
-            print(summary)
         else:
             summary = self.use_assistant()    
 
