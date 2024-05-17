@@ -327,38 +327,53 @@ class SummarizeTxtFileUpload(views.APIView):
         self.file_path = ""
 
     def post(self, request):
-        file = request.FILES['file']
-        # uploaded = store_uploaded_file(file=file)
-        if not file:
-            return JsonResponse({'error': 'No file provided'}, status=400)
+        try:
+            file = request.FILES['file']
+            # uploaded = store_uploaded_file(file=file)
+            if not file:
+                return JsonResponse({'error': 'No file provided'}, status=400)
 
-        # Save file to the media directory
-        file_name = default_storage.save(f'documents/{file.name}', ContentFile(file.read()))
-        self.file_path = default_storage.url(file_name)
+            # Save file to the media directory
+            file_name = default_storage.save(f'documents/{file.name}', ContentFile(file.read()))
+            # self.file_path = default_storage.url(file_name)
+            self.file_path = '/uploads/' + file_name
 
-        summary = self.use_assistant()
+            summary = self.use_assistant()
 
-        return response.Response({'summary': summary}, status=status.HTTP_200_OK)
+            return response.Response({'summary': summary}, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            # Log the exception if you have a logging setup
+            # logger.error(f"Error in SummarizeTxtFileUpload: {str(e)}")
+            return JsonResponse({'error': str(e)}, status=500)
+
 
     def use_assistant(self):
-        file = upload_txt_file_to_openai(self.file_path)
+        try:
+            file = upload_txt_file_to_openai(self.file_path)
 
-        assistant = create_assistant(file_id=file.id)
-        thread = create_thread()
-        message = create_message(thread_id=thread.id, message="Summarize the lecture content inside the file.")
-        run = run_thread(thread_id=thread.id, assistant_id=assistant.id)
-        retrieved_run_status = "in_progress"
+            assistant = create_assistant(file_id=file.id)
+            thread = create_thread()
+            message = create_message(thread_id=thread.id, message="Summarize the lecture content inside the file.")
+            run = run_thread(thread_id=thread.id, assistant_id=assistant.id)
+            retrieved_run_status = "in_progress"
 
-        while(retrieved_run_status != "completed"):
-            retrieved_run = retrieve_run(thread_id=thread.id, run_id=run.id)
-            retrieved_run_status = retrieved_run.status
-            time.sleep(2)
+            while(retrieved_run_status != "completed"):
+                retrieved_run = retrieve_run(thread_id=thread.id, run_id=run.id)
+                retrieved_run_status = retrieved_run.status
+                time.sleep(2)
+            
+            list_messages = get_list_messages(thread_id=thread.id)
+
+            delete_assistant(assistant_id=assistant.id)
+            delete_txt_file_from_openai(file_id=file.id)
+            delete_thread(thread_id=thread.id)
+            remove_file(file_path="." + self.file_path)
+
+            return list_messages.data[0].content[0].text.value
         
-        list_messages = get_list_messages(thread_id=thread.id)
-
-        delete_assistant(assistant_id=assistant.id)
-        delete_txt_file_from_openai(file_id=file.id)
-        delete_thread(thread_id=thread.id)
-        remove_file(file_path="." + self.file_path)
-
-        return list_messages.data[0].content[0].text.value
+        except Exception as e:
+            # Log the exception if you have a logging setup
+            # logger.error(f"Error in SummarizeTxtFileUpload: {str(e)}")
+            print(str(e))
+            return JsonResponse({'error': str(e)}, status=500)
