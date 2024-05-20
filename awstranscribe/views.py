@@ -34,6 +34,7 @@ from .utils import (
 from django.core.files.storage import default_storage
 from django.core.files.base import ContentFile
 
+import math
 
 class CreateUserView(views.APIView):
     permission_classes = [permissions.AllowAny]
@@ -276,12 +277,16 @@ class SummarizeTxt(views.APIView):
     def __init__(self, **kwargs: Any) -> None:
         self.text = ""
         self.max_token = 10000
+        self.sum_size = 0
 
     def post(self, request):
         self.text = request.data.get('text')
         num_token = calculate_tokens(self.text)
         isTokenLimit = check_token_limit_status(num_token=num_token, max_token=self.max_token)
+        self.sum_size = math.floor(num_token * 0.15)
 
+        if (self.sum_size >= 3000):
+            pass
 
         if isTokenLimit:
             summary = self.use_chatComplete()    
