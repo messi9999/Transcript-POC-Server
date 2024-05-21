@@ -301,7 +301,7 @@ class SummarizeTxt(views.APIView):
 
         assistant = create_assistant(file_id=file.id)
         thread = create_thread()
-        message = create_message(thread_id=thread.id, message="Summarize the lecture content inside the file.")
+        message = create_message(thread_id=thread.id, message="Summarize the lecture content inside the file into 15%. The summary must less than 1000 tokens.")
         run = run_thread(thread_id=thread.id, assistant_id=assistant.id)
         retrieved_run_status = "in_progress"
 
@@ -359,7 +359,7 @@ class SummarizeTxtFileUpload(views.APIView):
 
             assistant = create_assistant(file_id=file.id)
             thread = create_thread()
-            message = create_message(thread_id=thread.id, message="Summarize the lecture content inside the file.")
+            message = create_message(thread_id=thread.id, message="Summarize the lecture content inside the file into 15%. The summary must less than 1000 tokens.")
             run = run_thread(thread_id=thread.id, assistant_id=assistant.id)
             retrieved_run_status = "in_progress"
 

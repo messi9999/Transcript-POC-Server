@@ -32,7 +32,7 @@ def check_token_limit_status(num_token, max_token) -> bool:
 
 def create_assistant(file_id):
     my_assistant = client.beta.assistants.create(
-        instructions="You are a summarizer to summarize the lectures. Return 15% of total content. If the 15% is more than 1000 tokens, return less than 1000 tokens as the summary.",
+        instructions="Summarize the lecture content inside the file into 15%. The summary must less than 1000 tokens.",
         name="Summarization",
         tools=[{"type": "file_search"}],
         model="gpt-4o",
@@ -132,7 +132,7 @@ def chat_complete(text):
     completion = client.chat.completions.create(
         model="gpt-4o",
         messages=[
-            {"role": "system", "content": "Summarzie the content of this lecture. Return 15% of total content. If the 15% is more than 1000 tokens, return less than 1000 tokens as the summary."},
+            {"role": "system", "content": "Summarize the lecture content inside the prompt into 15%. The summary must less than 1000 tokens."},
             {"role": "user", "content": text}
         ]
     )
